@@ -1,0 +1,16 @@
+# Virtual Environment
+.venv/
+
+# Temporary files
+__pycache__/
+*.py[cod]
+*.log
+*.tmp
+*.sqlite3
+
+# Streamlit configuration
+.streamlit/
+
+# Generated files
+*.png
+*.csv
