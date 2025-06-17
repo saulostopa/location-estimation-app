@@ -4,7 +4,7 @@ This is a Python application built with [Streamlit](https://streamlit.io/) to an
 
 ## 🔧 Features
 
-- Upload a CSV file containing geolocation data
+- Upload a CSV file containing geolocation data or API URL json format
 - Generate time-interval-based reports estimating the most likely state
 - Display confidence percentages for each estimate
 - Interactive map visualization
@@ -26,6 +26,7 @@ This is a Python application built with [Streamlit](https://streamlit.io/) to an
 ├── requirements.txt     # Python dependencies
 ├── .gitignore           # Git ignored files
 ├── dataset.csv          # CSV Dataset
+├── dataset.json         # JSON Dataset for external API test
 └── README.md            # Documentation
 ```
 
@@ -48,6 +49,9 @@ The uploaded CSV file should contain at least the following columns:
 - `Latitude`
 - `Longitude`
 - `State`
+
+If you want to use API URL instead of csv upload, copy and past the URL bellow to simulate an API:
+https://raw.githubusercontent.com/saulostopa/location-estimation-app/refs/heads/main/dataset.json
 
 Example rows:
 
@@ -109,3 +113,10 @@ streamlit run app.py
 - Select the repository and the main branch
 - Set app.py as the main file
 - Click “Deploy”
+
+
+### 6. ToDo
+
+- Periodically extract data from a PostgreSQL database.
+- Transform and save the data in Redis (as JSON, lists, hashes or strings).
+- Redis will serve as a temporary read source, accessible via URL or public API.

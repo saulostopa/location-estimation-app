@@ -49,13 +49,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def load_data(data_file):
-    df = pd.read_csv(data_file)
+def load_data(data_file_or_url, is_url=False):
+    if is_url:
+        df = pd.read_json(data_file_or_url)
+    else:
+        df = pd.read_csv(data_file_or_url)
+
     df = df[(df['Latitude'] != 0) &
             (df['Longitude'] != 0) &
             (df['State'].notnull()) &
             (df['UTCDateTime'].notnull())].copy()
-    df['UTCDateTime'] = pd.to_datetime(df['UTCDateTime'], errors='coerce')
+
+    try:
+        df['UTCDateTime'] = pd.to_datetime(df['UTCDateTime'], format='%m/%d/%y %H:%M')
+    except Exception:
+        df['UTCDateTime'] = pd.to_datetime(df['UTCDateTime'], errors='coerce')
+
     df = df[df['UTCDateTime'].notnull()]
     df.set_index('UTCDateTime', inplace=True)
     df.sort_index(inplace=True)
@@ -152,24 +161,22 @@ def main():
     st.title("📍 Estimated Location by Time Interval")
 
     st.sidebar.header("📂 Data Source")
-    data_source = st.sidebar.radio("Choose data source:", ["CSV Upload", "API URL"])
-
+    
     df = None
-    if data_source == "CSV Upload":
-        data_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
+    input_method = st.sidebar.radio("Select data source:", ["Upload CSV", "Use JSON URL"])
+
+    if input_method == "Upload CSV":
+        data_file = st.sidebar.file_uploader("Upload the CSV file", type=["csv"])
         if data_file is not None:
             df = load_data(data_file)
-    else:
-        api_url = st.sidebar.text_input("Enter API URL returning JSON data")
-        if api_url:
+    elif input_method == "Use JSON URL":
+        json_url = st.sidebar.text_input("Enter the JSON URL:")
+        if json_url:
             try:
-                response = requests.get(api_url)
-                response.raise_for_status()
-                json_data = response.json()
-                df = pd.DataFrame(json_data)
-                df = load_data(df)
+                df = load_data(json_url, is_url=True)
             except Exception as e:
-                st.sidebar.error(f"Failed to fetch data: {e}")
+                st.error(f"Error loading JSON from URL: {e}")
+                return
 
     interval = st.sidebar.selectbox(
         "Select time interval:",
