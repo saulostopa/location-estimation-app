@@ -22,6 +22,32 @@ import altair as alt
 from matplotlib import pyplot as plt
 import io
 
+st.set_page_config(
+    page_title="Location Confidence Analyzer",
+    page_icon="📍",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("""
+    <style>
+    .main {
+        padding: 2rem;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+    }
+    .stDownloadButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+
 def load_data(data_file):
     df = pd.read_csv(data_file)
     df = df[(df['Latitude'] != 0) &
@@ -122,36 +148,44 @@ def export_csv(filtered_df):
     st.download_button("Download Report as CSV", csv, "location_report.csv", "text/csv")
 
 def main():
-    st.title("Estimated Location by Time Interval")
+    st.title("📍 Estimated Location by Time Interval")
 
-    data_file = st.file_uploader("Upload the CSV file with location data", type=["csv"])
+    st.sidebar.header("📂 Upload & Settings")
+    data_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
+
+    interval = st.sidebar.selectbox(
+        "Select time interval:",
+        options=["15min", "30min", "1H", "2H", "4H"],
+        index=2
+    )
 
     if data_file is not None:
         df = load_data(data_file)
-        interval = st.selectbox("Select the time interval to group data:",
-                                 options=["15min", "30min", "1H", "2H", "4H"], index=2)
-
         report_df = generate_report(df, interval)
+
         available_states = sorted(report_df['State'].dropna().unique())
-        selected_states = st.multiselect("Filter by state:", available_states, default=available_states)
+        selected_states = st.sidebar.multiselect("Filter by state:", available_states, default=available_states)
         filtered_df = report_df[report_df['State'].isin(selected_states)]
 
-        st.subheader("Estimated Location Report")
+        st.subheader("📄 Estimated Location Report")
         st.dataframe(filtered_df.drop(columns=['Latitude', 'Longitude']), use_container_width=True)
 
-        st.subheader("Geographic Visualization")
+        st.subheader("🗺️ Geographic Visualization")
         show_map(filtered_df)
 
-        st.subheader("Confidence by Interval")
+        st.subheader("📈 Confidence by Interval")
         line_chart(filtered_df)
 
-        st.subheader("Confidence (%) Distribution")
+        st.subheader("📊 Confidence (%) Distribution")
         confidence_histogram(filtered_df)
 
-        st.subheader("Occurrences per State")
+        st.subheader("📍 Occurrences per State")
         state_bar_chart(filtered_df)
 
         export_csv(filtered_df)
+    else:
+        st.info("Please upload a CSV file with location data in the sidebar.")
+
 
 if __name__ == "__main__":
     main()
