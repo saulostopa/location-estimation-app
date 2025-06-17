@@ -21,6 +21,7 @@ import pandas as pd
 import altair as alt
 from matplotlib import pyplot as plt
 import io
+import requests
 
 st.set_page_config(
     page_title="Location Confidence Analyzer",
@@ -150,8 +151,25 @@ def export_csv(filtered_df):
 def main():
     st.title("📍 Estimated Location by Time Interval")
 
-    st.sidebar.header("📂 Upload & Settings")
-    data_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
+    st.sidebar.header("📂 Data Source")
+    data_source = st.sidebar.radio("Choose data source:", ["CSV Upload", "API URL"])
+
+    df = None
+    if data_source == "CSV Upload":
+        data_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
+        if data_file is not None:
+            df = load_data(data_file)
+    else:
+        api_url = st.sidebar.text_input("Enter API URL returning JSON data")
+        if api_url:
+            try:
+                response = requests.get(api_url)
+                response.raise_for_status()
+                json_data = response.json()
+                df = pd.DataFrame(json_data)
+                df = load_data(df)
+            except Exception as e:
+                st.sidebar.error(f"Failed to fetch data: {e}")
 
     interval = st.sidebar.selectbox(
         "Select time interval:",
@@ -159,8 +177,7 @@ def main():
         index=2
     )
 
-    if data_file is not None:
-        df = load_data(data_file)
+    if df is not None:
         report_df = generate_report(df, interval)
 
         available_states = sorted(report_df['State'].dropna().unique())
@@ -184,7 +201,7 @@ def main():
 
         export_csv(filtered_df)
     else:
-        st.info("Please upload a CSV file with location data in the sidebar.")
+        st.info("Please provide a valid dataset (CSV upload or API URL).")
 
 
 if __name__ == "__main__":
