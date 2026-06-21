@@ -26,18 +26,43 @@ import io
 from geopy.distance import geodesic
 import numpy as np
 
+# --- CONFIGURATION CONSTANTS ---
+# Chart Sizes (Width, Height in inches)
+CHART_FIGSIZE_LINE = (10, 3)
+CHART_FIGSIZE_HIST = (5, 2)
+CHART_FIGSIZE_BAR = (5, 2)
+
+# Map Settings
+MAP_ZOOM = 8
+
+# Font Sizes
+FONT_SIZE_TITLE = 12
+FONT_SIZE_LABEL = 8
+FONT_SIZE_TICK = 6
+FONT_SIZE_LEGEND = 6
+
+# Function to calculate distance using vectorized Haversine formula
+def haversine_np(lon1, lat1, lon2, lat2):
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+    km = 6367 * c
+    return km
+
 # Function to load data
 def load_data(data_file, is_url=False):
     if is_url:
         df = pd.read_json(data_file)
     else:
-        df = pd.read_csv(data_file)
+        df = pd.read_csv(data_file, low_memory=False)
 
     df = df[(df['Latitude'] != 0) &
             (df['Longitude'] != 0) &
             (df['State'].notnull()) &
             (df['UTCDateTime'].notnull())].copy()
-    df['UTCDateTime'] = pd.to_datetime(df['UTCDateTime'], errors='coerce')
+    df['UTCDateTime'] = pd.to_datetime(df['UTCDateTime'], format='mixed', errors='coerce')
     df = df[df['UTCDateTime'].notnull()]
     df.set_index('UTCDateTime', inplace=True)
     df.sort_index(inplace=True)
@@ -63,20 +88,15 @@ def refine_state_confidence(df, smoothing_window=3):
     df['PrevLat'] = df['Latitude'].shift(1)
     df['PrevLon'] = df['Longitude'].shift(1)
 
-    df['DistanceKM'] = df.apply(lambda row: geodesic(
-        (row['Latitude'], row['Longitude']),
-        (row['PrevLat'], row['PrevLon'])).km if pd.notnull(row['PrevLat']) else 0, axis=1)
+    # Use vectorized Haversine instead of slow geodesic apply
+    df['DistanceKM'] = haversine_np(df['Longitude'], df['Latitude'], df['PrevLon'], df['PrevLat'])
+    df['DistanceKM'] = df['DistanceKM'].fillna(0)
 
     df['TimeDeltaH'] = df.index.to_series().diff().dt.total_seconds() / 3600
     df['SpeedKPH'] = df['DistanceKM'] / df['TimeDeltaH']
     df['SpeedKPH'] = df['SpeedKPH'].replace([np.inf, -np.inf], np.nan).fillna(0)
     df['Anomaly'] = df['SpeedKPH'] > 300
 
-    # df['SmoothedState'] = (
-    #     df['State']
-    #     .rolling(window=smoothing_window, center=True)
-    #     .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan)
-    # )
     df['SmoothedState'] = rolling_mode(df['State'], smoothing_window)
 
     df['Stable'] = (df['State'] == df['SmoothedState']).astype(int)
@@ -85,7 +105,9 @@ def refine_state_confidence(df, smoothing_window=3):
 
 # Function to generate report
 def generate_report(df, interval):
-    grouped = df.groupby(pd.Grouper(freq=interval))
+    # Normalize interval name to avoid deprecation warnings (e.g. '1H' -> '1h')
+    normalized_interval = interval.replace('H', 'h')
+    grouped = df.groupby(pd.Grouper(freq=normalized_interval))
     report = []
     for start_time, group in grouped:
         if group.empty:
@@ -109,25 +131,39 @@ def generate_report(df, interval):
 
     return pd.DataFrame(report)
 
+# Caching wrappers to avoid hashing Pandas DataFrames (hash the file source/url/interval instead)
+@st.cache_data
+def get_processed_data(data_file, is_url=False):
+    df = load_data(data_file, is_url)
+    df = refine_state_confidence(df)
+    return df
+
+@st.cache_data
+def get_report_data(data_file, is_url, interval):
+    df = get_processed_data(data_file, is_url)
+    return generate_report(df, interval)
+
+
 # Map display
 def show_map(filtered_df):
     map_df = filtered_df[['Latitude', 'Longitude']].dropna().rename(columns={
         'Latitude': 'latitude',
         'Longitude': 'longitude'
     })
-    st.map(map_df, zoom=8)
+    st.map(map_df, zoom=MAP_ZOOM)
 
 # Line chart comparison with both confidence metrics
 def line_chart(filtered_df):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=CHART_FIGSIZE_LINE)
     for state in filtered_df['State'].unique():
         state_df = filtered_df[filtered_df['State'] == state]
         ax.plot(state_df['Start'], state_df['Confidence (%)'], marker='o', label=f"{state} - Raw")
         ax.plot(state_df['Start'], state_df['ConfidenceRefined (%)'], marker='x', linestyle='--', label=f"{state} - Refined")
-    ax.set_title('Confidence by Time Interval')
-    ax.set_xlabel('Interval Start')
-    ax.set_ylabel('Confidence (%)')
-    ax.legend(fontsize='small')
+    ax.set_title('Confidence by Time Interval', fontsize=FONT_SIZE_TITLE)
+    ax.set_xlabel('Interval Start', fontsize=FONT_SIZE_LABEL)
+    ax.set_ylabel('Confidence (%)', fontsize=FONT_SIZE_LABEL)
+    ax.tick_params(axis='both', which='major', labelsize=FONT_SIZE_TICK)
+    ax.legend(fontsize=FONT_SIZE_LEGEND)
     ax.grid(True)
     st.pyplot(fig)
 
@@ -138,13 +174,14 @@ def line_chart(filtered_df):
 # Histogram
 
 def confidence_histogram(filtered_df):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=CHART_FIGSIZE_HIST)
     filtered_df['Confidence (%)'].plot(kind='hist', bins=20, alpha=0.5, label='Raw', ax=ax)
     filtered_df['ConfidenceRefined (%)'].plot(kind='hist', bins=20, alpha=0.5, label='Refined', ax=ax)
-    ax.set_title('Confidence (%) Distribution')
-    ax.set_xlabel('Confidence (%)')
+    ax.set_title('Confidence (%) Distribution', fontsize=FONT_SIZE_TITLE)
+    ax.set_xlabel('Confidence (%)', fontsize=FONT_SIZE_LABEL)
+    ax.tick_params(axis='both', which='major', labelsize=FONT_SIZE_TICK)
     ax.spines[['top', 'right']].set_visible(False)
-    ax.legend(fontsize='small')
+    ax.legend(fontsize=FONT_SIZE_LEGEND)
     st.pyplot(fig)
 
     buf = io.BytesIO()
@@ -153,10 +190,12 @@ def confidence_histogram(filtered_df):
 
 # State bar chart
 def state_bar_chart(filtered_df):
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=CHART_FIGSIZE_BAR)
     filtered_df['State'].value_counts().plot(kind='bar', ax=ax, title='Occurrences per State')
-    ax.set_xlabel('State')
-    ax.set_ylabel('Number of Occurrences')
+    ax.set_title('Occurrences per State', fontsize=FONT_SIZE_TITLE)
+    ax.set_xlabel('State', fontsize=FONT_SIZE_LABEL)
+    ax.set_ylabel('Number of Occurrences', fontsize=FONT_SIZE_LABEL)
+    ax.tick_params(axis='both', which='major', labelsize=FONT_SIZE_TICK)
     ax.spines[['top', 'right']].set_visible(False)
     st.pyplot(fig)
 
@@ -173,30 +212,27 @@ def export_csv(filtered_df):
 
 def main():
     st.set_page_config(
-        page_title="📍 Estimated Location by Time Interval",
+        page_title="Cell Tower Triangulation & Geolocation Analyzer",
         layout="wide",
         initial_sidebar_state="expanded"
     )
 
-    st.title("📍 Estimated Location by Time Interval")
+    st.title("📍 Cell Tower Triangulation & Geolocation Analyzer")
+    st.write("Developed a Python-driven data science application designed to ingest and parse millions of rows of mobile subscriber location data. Implemented triangulation algorithms to estimate geographic presence across specific time intervals, calculating automated confidence levels per location.")
     st.sidebar.header("📂 Data Source")
 
     df = None
+    report_df = None
+    source = None
+    is_url = False
+
     input_method = st.sidebar.radio("Select data source:", ["Upload CSV", "Use JSON URL"])
 
     if input_method == "Upload CSV":
-        data_file = st.sidebar.file_uploader("Upload the CSV file", type=["csv"])
-        if data_file is not None:
-            df = load_data(data_file)
-
+        source = st.sidebar.file_uploader("Upload the CSV file", type=["csv"])
     elif input_method == "Use JSON URL":
-        json_url = st.sidebar.text_input("Enter the JSON URL:")
-        if json_url:
-            try:
-                df = load_data(json_url, is_url=True)
-            except Exception as e:
-                st.error(f"Error loading JSON from URL: {e}")
-                return
+        source = st.sidebar.text_input("Enter the JSON URL:")
+        is_url = True
 
     interval = st.sidebar.selectbox(
         "Select time interval:",
@@ -204,13 +240,30 @@ def main():
         index=2
     )
 
-    if df is not None:
-        df = refine_state_confidence(df)
-        report_df = generate_report(df, interval)
+    if source:
+        try:
+            df = get_processed_data(source, is_url)
+            report_df = get_report_data(source, is_url, interval)
+        except Exception as e:
+            st.error(f"Error loading or processing data: {e}")
+            return
 
         available_states = sorted(report_df['State'].dropna().unique())
-        selected_states = st.sidebar.multiselect("Filter by state:", available_states, default=available_states)
+
+        # Keep selected states in session state between interval changes
+        prev_selection = st.session_state.get('selected_states', [])
+        valid_defaults = [s for s in prev_selection if s in available_states]
+        if not valid_defaults:
+            valid_defaults = available_states
+
+        selected_states = st.sidebar.multiselect("Filter by state:", available_states, default=valid_defaults)
+        st.session_state['selected_states'] = selected_states
+
         filtered_df = report_df[report_df['State'].isin(selected_states)]
+
+        if filtered_df.empty:
+            st.warning("⚠️ No data available for the selected states.")
+            return
 
         st.subheader("📄 Estimated Location Report")
         st.dataframe(filtered_df.drop(columns=['Latitude', 'Longitude']), use_container_width=True)

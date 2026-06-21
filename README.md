@@ -1,6 +1,10 @@
-# 📍 Location Estimation App
+# 📍 Cell Tower Triangulation & Geolocation Analyzer
 
-This is a Python application built with [Streamlit](https://streamlit.io/) to analyze and visualize mobile location data based on cell tower triangulation. It estimates the most probable state (e.g., NY or CT) a person was in during specific time intervals and calculates a confidence level for each estimate.
+This is a Python-driven data science application designed to ingest and parse millions of rows of mobile subscriber location data with [Streamlit](https://streamlit.io/) to analyze and visualize tower triangulation. Implemented triangulation algorithms to estimate geographic presence across specific time intervals, calculating automated confidence levels per location.
+
+<p align="center">
+  <img src="images/01-full.png" alt="Cell Tower Triangulation & Geolocation Analyzer" width="800">
+</p>
 
 ## 🔧 Features
 
@@ -14,10 +18,21 @@ This is a Python application built with [Streamlit](https://streamlit.io/) to an
 
 ## 📊 Sample Visuals
 
-- Time-based line charts of confidence levels
-- Histograms of confidence distribution
-- State frequency bar charts
 - Interactive maps with estimated positions
+  <br>
+  <img src="images/02-visualization.png" alt="Geographic Visualization" width="800">
+
+- Time-based line charts of confidence levels
+  <br>
+  <img src="images/03-confidence-by-time-interval.png" alt="Confidence by Time Interval" width="800">
+
+- Histograms of confidence distribution
+  <br>
+  <img src="images/04-confidence-distribution.png" alt="Confidence Distribution" width="800">
+
+- State frequency bar charts
+  <br>
+  <img src="images/05-occurrences-per-state.png" alt="Occurrences per State" width="800">
 
 ## 🧪 Project Structure
 
