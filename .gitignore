@@ -12,5 +12,4 @@ __pycache__/
 .streamlit/
 
 # Generated files
-*.png
 *.csv
